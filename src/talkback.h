@@ -107,7 +107,28 @@ ev_loop        *instance_loop(const tb_instance *in);
  * is playing back.  `slot` is 1 or 2; an unused slot reports 0.  Used by the
  * lane tests, and the natural hook for any future status output. */
 int instance_lane_captured(const tb_instance *in, int slot);
+tb_lane *instance_lane(tb_instance *in, int slot);   /* NULL for a bad slot */
 int instance_lane_replaying(const tb_instance *in, int slot);
+
+/* ---- playlist.c ---- */
+
+/* Build one complete DMR group call -- voice header, voice bursts A..F repeating
+ * (three AMBE frames each, the last burst padded with AMBE silence), terminator --
+ * from `nframes` 49-bit AMBE frames, as DMRD packets ready for lane_replay_start.
+ * Addressing and LC windows are left zero: tb_rewrite_packet fills them on the
+ * way out, exactly as for a captured call.  Returns the packet count, or -1 if
+ * it wouldn't fit in `cap` packets.  Pure; exposed for tests. */
+int tb_build_call(const uint8_t (*ambe49)[7], int nframes, int slot,
+                  uint8_t *pkts, int cap);
+
+/* Parse an md380emu .amb file (".amb" then 8-byte records: status byte, 49 bits
+ * MSB-first, the last in byte 7's LSB) into packed 49-bit frames, 7 bytes each
+ * (bit 48 in byte 6's MSB).  Returns the frame count, or -1 on a bad file. */
+int tb_read_amb(const char *path, uint8_t (*out)[7], int max_frames);
+
+/* Start the playlist timer on every lane of a playlist-mode instance.  Returns
+ * 0, or -1 if the directory holds no .amb files. */
+int instance_playlist_start(tb_instance *in);
 
 /* ---- replay.c ---- */
 int  lane_replay_init(tb_lane *ln, int max_capture_secs);

@@ -121,6 +121,17 @@ static void load_instance(const toml *t, errbag *e, const char *sec, InstanceCfg
     ic->max_capture_secs = (int)get_int(t, e, sec, "max_capture_secs",
                                         0, 30, 1, 1, 1, 300);
 
+    get_str(t, e, sec, "playlist_dir", 0, "", ic->playlist_dir, sizeof ic->playlist_dir);
+    ic->playlist_interval = (double)get_int(t, e, sec, "playlist_interval_secs",
+                                            0, 30, 1, 1, 1, 86400);
+    {   char order[32];
+        get_str(t, e, sec, "playlist_order", 0, "sequential", order, sizeof order);
+        if (!strcmp(order, "sequential"))   ic->playlist_shuffle = 0;
+        else if (!strcmp(order, "shuffle")) ic->playlist_shuffle = 1;
+        else adderr(e, "[%s] playlist_order must be \"sequential\" or \"shuffle\", got \"%s\"",
+                    sec, order);
+    }
+
     get_str(t, e, sec, "master_ip", 1, "127.0.0.1", ic->master_ip, sizeof ic->master_ip);
     ic->master_port = (int)get_int(t, e, sec, "master_port", 1, 0, 1, 1, 1, 65535);
     { char pp[256]; get_str(t, e, sec, "passphrase", 1, "", pp, sizeof pp);

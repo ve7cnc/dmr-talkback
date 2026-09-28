@@ -45,6 +45,9 @@ int instance_lane_captured(const tb_instance *in, int slot) {
     return in->lane[slot - 1].cap.n;
 }
 
+tb_lane *instance_lane(tb_instance *in, int slot) {
+    return (slot == 1 || slot == 2) ? &in->lane[slot - 1] : NULL;
+}
 int instance_lane_replaying(const tb_instance *in, int slot) {
     if (slot != 1 && slot != 2) return 0;
     return lane_replay_active(&in->lane[slot - 1]);
@@ -108,8 +111,12 @@ tb_instance *instance_new(const InstanceCfg *ic, ev_loop *loop) {
             instance_free(in);
             return NULL;
         }
-        LOGI(LOGN, "[%s] TS%d answering TG %u — buffer %d packets (%d s, %d bytes)",
-             ic->name, ln->slot, ln->tgid, npkts, ic->max_capture_secs, npkts * DMRD_LEN);
+        if (ic->playlist_dir[0])
+            LOGI(LOGN, "[%s] TS%d playing on TG %u every %.0f s — buffer %d packets (%d s)",
+                 ic->name, ln->slot, ln->tgid, ic->playlist_interval, npkts, ic->max_capture_secs);
+        else
+            LOGI(LOGN, "[%s] TS%d answering TG %u — buffer %d packets (%d s, %d bytes)",
+                 ic->name, ln->slot, ln->tgid, npkts, ic->max_capture_secs, npkts * DMRD_LEN);
     }
     return in;
 }
@@ -163,6 +170,7 @@ void tb_hbp_voice_received(tb_instance *in, const uint8_t *pkt, int len) {
 
     tb_lane *ln = &in->lane[slot - 1];
     if (!ln->tgid) return;                                  /* slot unused */
+    if (in->cfg->playlist_dir[0]) return;       /* a player doesn't echo callers */
     if (rd24(pkt + DMRD_DST_OFF) != ln->tgid) return;       /* not our TG */
 
     /* This lane is busy playing back.  The other lane is unaffected. */

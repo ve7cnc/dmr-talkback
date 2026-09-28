@@ -29,6 +29,14 @@ typedef struct {
     double   replay_delay;          /* seconds after capture end */
     int      max_capture_secs;      /* bounds each lane's fixed buffer */
 
+    /* Playlist mode (playlist.c).  A non-empty playlist_dir turns the instance
+     * from a talkback into a player: instead of echoing callers, each lane plays
+     * the next pre-encoded .amb file from the directory every playlist_interval
+     * seconds, and inbound calls are ignored. */
+    char     playlist_dir[256];
+    double   playlist_interval;     /* seconds, start to start */
+    int      playlist_shuffle;      /* 0 = sorted order, 1 = shuffled each cycle */
+
     /* server */
     char     master_ip[256];
     int      master_port;

@@ -112,6 +112,35 @@ the same ID. Do not connect two talkback instances to the same HBlink3 system or
 HBlink4 without using different radio IDs for each -- though one would wonder why
 you might do this -- hey, I won't judge!
 
+## Playlist mode (this fork)
+
+An instance with a `playlist_dir` is a **player** instead of a talkback: every
+`playlist_interval_secs` each of its slots plays the next pre-encoded AMBE file
+from the directory (and its immediate subdirectories) as a group call on its
+talkgroup, from the instance's radio ID. Inbound calls are ignored. It's meant
+for repeatable audio-quality and network tests: the same AMBE goes out
+bit-identical every time, so any difference a listener hears is the path, not
+the source.
+
+```toml
+[instance.sentences]
+radio_id               = 13027161
+slot1_tgid             = 9997
+playlist_dir           = "/var/lib/sentences"
+playlist_interval_secs = 30            # start to start
+playlist_order         = "shuffle"     # or "sequential" (sorted by path)
+replay_delay_ms        = 0
+max_capture_secs       = 10            # longest file it will play
+# master_ip / master_port / passphrase as for a talkback
+```
+
+The files are in md380emu's `.amb` format: the 4-byte magic `.amb`, then one
+8-byte record per 20 ms frame (a status byte, then the 49 AMBE bits MSB-first,
+the last in byte 7's LSB). The player builds each call itself — voice header,
+bursts A–F with voice sync and EMB headers, three AMBE frames per burst with
+AMBE silence padding the last, terminator — and replays it through the same
+rewrite and 60 ms clock as a talkback echo.
+
 ## Build and install
 
 ```sh

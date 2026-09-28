@@ -117,3 +117,20 @@ colorcode   = "01"
 # passphrase  = "s3cr37w0rd"
 # callsign    = "TALKBACK"
 # description = "Voice Test"
+
+# ---------------------------------------------------------------------------
+# Playlist mode (this fork): a non-empty playlist_dir makes the instance a
+# player instead of a talkback -- each slot plays the next .amb file every
+# playlist_interval_secs and ignores inbound calls. See README "Playlist mode".
+#
+# [instance.sentences]
+# radio_id               = 3120097
+# slot1_tgid             = 9997
+# playlist_dir           = "/var/lib/sentences"
+# playlist_interval_secs = 30          # start to start
+# playlist_order         = "shuffle"   # or "sequential"
+# replay_delay_ms        = 0
+# max_capture_secs       = 10
+# master_ip              = "127.0.0.1"
+# master_port            = 54000
+# passphrase             = "s3cr37w0rd"

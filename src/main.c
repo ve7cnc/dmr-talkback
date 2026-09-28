@@ -94,6 +94,10 @@ int main(int argc, char **argv)
         }
         g_hbp[i] = hbp_new(ic, g_inst[i], g_loop);
         instance_set_hbp(g_inst[i], g_hbp[i]);
+        if (ic->playlist_dir[0] && instance_playlist_start(g_inst[i]) != 0) {
+            fprintf(stderr, "[%s] no .amb files under playlist_dir %s\n", ic->name, ic->playlist_dir);
+            return 1;
+        }
     }
 
     struct sigaction sa; memset(&sa, 0, sizeof sa);
