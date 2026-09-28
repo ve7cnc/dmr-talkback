@@ -59,8 +59,8 @@ static void test_build(int slot) {
     }
     uint8_t pkts[16 * DMRD_LEN];
     int n = tb_build_call((const uint8_t (*)[7])in, NF, slot, pkts, 16);
-    CHECK(n == 7 + 2, "slot %d: %d packets, want 9 (header + 7 bursts + terminator)", slot, n);
-    if (n != 9) return;
+    CHECK(n == 3 + 7 + 1, "slot %d: %d packets, want 11 (3 headers + 7 bursts + terminator)", slot, n);
+    if (n != 11) return;
 
     uint8_t ts = slot == 2 ? HBPF_TGID_TS2 : 0;
     for (int i = 0; i < n; i++) {
@@ -69,10 +69,10 @@ static void test_build(int slot) {
         CHECK(!memcmp(p, "DMRD", 4), "pkt %d: DMRD magic", i);
         CHECK((f & HBPF_TGID_TS2) == ts, "pkt %d: slot bit", i);
         uint8_t kind = f & (HBPF_FRAMETYPE_MASK | HBPF_DTYPE_MASK);
-        if (i == 0)          CHECK(kind == (HBPF_FRAMETYPE_DATASYNC | HBPF_SLT_VHEAD), "pkt 0 is a voice header");
+        if (i < 3)           CHECK(kind == (HBPF_FRAMETYPE_DATASYNC | HBPF_SLT_VHEAD), "pkt %d is a voice header", i);
         else if (i == n - 1) CHECK(kind == (HBPF_FRAMETYPE_DATASYNC | HBPF_SLT_VTERM), "last pkt is a terminator");
         else {
-            int pos = (i - 1) % 6;
+            int pos = (i - 3) % 6;
             uint8_t want = pos == 0 ? HBPF_FRAMETYPE_VOICESYNC : (uint8_t)(HBPF_FRAMETYPE_VOICE | pos);
             CHECK(kind == want, "pkt %d: burst %c flags %02x, want %02x", i, 'A' + pos, kind, want);
         }
@@ -84,11 +84,11 @@ static void test_build(int slot) {
     CHECK(!memcmp(b + 108, DMR_BS_DATA_SYNC, 48), "header carries data sync");
     CHECK(!memcmp(b + 98, DMR_SLOT_TYPE_VHEAD, 10) && !memcmp(b + 156, DMR_SLOT_TYPE_VHEAD + 10, 10),
           "header slot type");
-    payload_bits(pkts + 1 * DMRD_LEN, b);
+    payload_bits(pkts + 3 * DMRD_LEN, b);
     CHECK(!memcmp(b + 108, DMR_BS_VOICE_SYNC, 48), "burst A carries voice sync");
-    payload_bits(pkts + 2 * DMRD_LEN, b);
+    payload_bits(pkts + 4 * DMRD_LEN, b);
     CHECK(!memcmp(b + 108, DMR_EMB[0], 8) && !memcmp(b + 148, DMR_EMB[0] + 8, 8), "burst B EMB header");
-    payload_bits(pkts + 8 * DMRD_LEN, b);
+    payload_bits(pkts + 10 * DMRD_LEN, b);
     CHECK(!memcmp(b + 108, DMR_BS_DATA_SYNC, 48), "terminator carries data sync");
     CHECK(!memcmp(b + 98, DMR_SLOT_TYPE_VTERM, 10), "terminator slot type");
 
@@ -96,7 +96,7 @@ static void test_build(int slot) {
     int bad = 0;
     for (int bi = 0; bi < 7; bi++) {
         dmr_bit got[3][49];
-        burst_frames(pkts + (1 + bi) * DMRD_LEN, got);
+        burst_frames(pkts + (3 + bi) * DMRD_LEN, got);
         for (int j = 0; j < 3; j++) {
             int idx = bi * 3 + j;
             dmr_bit want[56], s72[72];
@@ -123,7 +123,7 @@ static void test_build(int slot) {
     CHECK(!memcmp(b + 108, DMR_BS_DATA_SYNC, 48), "rewrite leaves the header's sync alone");
 
     /* Too small a buffer is refused, not overrun */
-    CHECK(tb_build_call((const uint8_t (*)[7])in, NF, slot, pkts, 8) == -1, "cap 8 < 9 refused");
+    CHECK(tb_build_call((const uint8_t (*)[7])in, NF, slot, pkts, 10) == -1, "cap 10 < 11 refused");
 }
 
 static void test_read_amb(void) {

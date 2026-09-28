@@ -73,13 +73,13 @@ int tb_build_call(const uint8_t (*ambe49)[7], int nframes, int slot,
                   uint8_t *pkts, int cap)
 {
     int nbursts = (nframes + FRAMES_PER_BURST - 1) / FRAMES_PER_BURST;
-    int total = nbursts + 2;                    /* + header + terminator */
+    int total = TB_CALL_HEADERS + nbursts + 1;  /* + headers + terminator */
     if (nframes <= 0 || total > cap) return -1;
     uint8_t ts = (slot == 2) ? HBPF_TGID_TS2 : 0;
 
     uint8_t *p = pkts;
-    build_lc_frame(p, ts | HBPF_FRAMETYPE_DATASYNC | HBPF_SLT_VHEAD, DMR_SLOT_TYPE_VHEAD);
-    p += DMRD_LEN;
+    for (int h = 0; h < TB_CALL_HEADERS; h++, p += DMRD_LEN)
+        build_lc_frame(p, ts | HBPF_FRAMETYPE_DATASYNC | HBPF_SLT_VHEAD, DMR_SLOT_TYPE_VHEAD);
 
     for (int b = 0; b < nbursts; b++, p += DMRD_LEN) {
         int pos = b % 6;                        /* superframe position, A..F */

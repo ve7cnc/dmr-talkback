@@ -118,6 +118,10 @@ int instance_lane_replaying(const tb_instance *in, int slot);
  * Addressing and LC windows are left zero: tb_rewrite_packet fills them on the
  * way out, exactly as for a captured call.  Returns the packet count, or -1 if
  * it wouldn't fit in `cap` packets.  Pure; exposed for tests. */
+/* Voice LC headers at the start of a built call.  Motorola radios send three, so a
+ * receiver that misses one while the repeater keys up still gets the call's LC
+ * from the header rather than joining by late entry. */
+#define TB_CALL_HEADERS 3
 int tb_build_call(const uint8_t (*ambe49)[7], int nframes, int slot,
                   uint8_t *pkts, int cap);
 
