@@ -36,6 +36,9 @@ typedef struct {
     char     playlist_dir[256];
     double   playlist_interval;     /* seconds, start to start */
     int      playlist_shuffle;      /* 0 = sorted order, 1 = shuffled each cycle */
+    int      playlist_pick;         /* files per transmission; >1 = that many random files
+                                     * from one randomly chosen subdirectory */
+    int      playlist_gap_frames;   /* 20 ms frames of silence between picked files */
 
     /* server */
     char     master_ip[256];

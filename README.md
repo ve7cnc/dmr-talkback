@@ -129,6 +129,9 @@ slot1_tgid             = 9997
 playlist_dir           = "/var/lib/sentences"
 playlist_interval_secs = 30            # start to start
 playlist_order         = "shuffle"     # or "sequential" (sorted by path)
+playlist_pick          = 1             # >1: that many random files from ONE random
+                                       #     subdirectory, in a single transmission
+playlist_gap_ms        = 0             # silence between picked files
 replay_delay_ms        = 0
 max_capture_secs       = 10            # longest file it will play
 # master_ip / master_port / passphrase as for a talkback

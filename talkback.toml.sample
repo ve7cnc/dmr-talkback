@@ -129,6 +129,9 @@ colorcode   = "01"
 # playlist_dir           = "/var/lib/sentences"
 # playlist_interval_secs = 30          # start to start
 # playlist_order         = "shuffle"   # or "sequential"
+# playlist_pick          = 3           # >1: that many random files from one random
+#                                      #     subdirectory, in one transmission
+# playlist_gap_ms        = 200         # silence between them
 # replay_delay_ms        = 0
 # max_capture_secs       = 10
 # master_ip              = "127.0.0.1"

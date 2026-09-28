@@ -124,6 +124,8 @@ static void load_instance(const toml *t, errbag *e, const char *sec, InstanceCfg
     get_str(t, e, sec, "playlist_dir", 0, "", ic->playlist_dir, sizeof ic->playlist_dir);
     ic->playlist_interval = (double)get_int(t, e, sec, "playlist_interval_secs",
                                             0, 30, 1, 1, 1, 86400);
+    ic->playlist_pick = (int)get_int(t, e, sec, "playlist_pick", 0, 1, 1, 1, 1, 20);
+    ic->playlist_gap_frames = (int)(get_int(t, e, sec, "playlist_gap_ms", 0, 0, 1, 0, 1, 5000) / 20);
     {   char order[32];
         get_str(t, e, sec, "playlist_order", 0, "sequential", order, sizeof order);
         if (!strcmp(order, "sequential"))   ic->playlist_shuffle = 0;

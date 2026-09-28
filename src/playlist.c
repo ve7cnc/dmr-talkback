@@ -8,6 +8,10 @@
  * goes out bit-identical every time, so any difference a listener hears is the
  * path, not the source.
  *
+ * With playlist_pick > 1 each transmission is instead that many files picked at
+ * random from ONE randomly chosen subdirectory (e.g. one speaker), joined with
+ * playlist_gap_ms of AMBE silence between them, in a single call.
+ *
  * The .amb files come from md380emu's encoder (an 8-byte record per 20 ms frame:
  * a status byte, then the 49 AMBE bits MSB-first with the last in byte 7's LSB).
  * This file only BUILDS the call -- header, bursts A..F with the right sync and
@@ -133,6 +137,11 @@ typedef struct {
     tb_instance *inst;
     char       **files;
     int          nfiles;
+    int         *dir_of;        /* file -> index into dirs */
+    int          ndirs;
+    int         *dir_first;     /* files are sorted, so each dir is a contiguous run */
+    int         *dir_count;
+    uint8_t      silence49[7];  /* one frame of AMBE silence, packed 49-bit */
     int         *order;         /* play order, a permutation of 0..nfiles-1 */
     int          next;
     uint8_t    (*frames)[7];    /* scratch, sized from max_capture_secs */
@@ -184,6 +193,92 @@ static void shuffle(playlist *pl) {
 
 static void tick_cb(ev_loop *loop, void *ud);
 
+/* Length of a path's directory part ("a/b/c.amb" -> 3), 0 if none. */
+static size_t dir_len(const char *path) {
+    const char *slash = strrchr(path, '/');
+    return slash ? (size_t)(slash - path) : 0;
+}
+
+/* Group the (sorted) files by parent directory: each directory is a contiguous run. */
+static int index_dirs(playlist *pl) {
+    pl->dir_of = malloc((size_t)pl->nfiles * sizeof *pl->dir_of);
+    pl->dir_first = malloc((size_t)pl->nfiles * sizeof *pl->dir_first);
+    pl->dir_count = calloc((size_t)pl->nfiles, sizeof *pl->dir_count);
+    if (!pl->dir_of || !pl->dir_first || !pl->dir_count) return -1;
+    for (int i = 0; i < pl->nfiles; i++) {
+        size_t len = dir_len(pl->files[i]);
+        int new_dir = i == 0 || len != dir_len(pl->files[i - 1]) ||
+                      strncmp(pl->files[i], pl->files[i - 1], len) != 0;
+        if (new_dir) pl->dir_first[pl->ndirs++] = i;
+        pl->dir_of[i] = pl->ndirs - 1;
+        pl->dir_count[pl->ndirs - 1]++;
+    }
+    return 0;
+}
+
+/* Append a file's frames at `at`; returns the new frame count, or -1 if unreadable
+ * or it would overflow the scratch buffer. */
+static int append_file(playlist *pl, const char *path, int at) {
+    int n = tb_read_amb(path, pl->frames + at, pl->max_frames - at);
+    if (n <= 0) return -1;
+    return at + n;
+}
+
+/* One transmission of playlist_pick random files from one random directory. */
+static void play_group(playlist *pl) {
+    tb_instance *in = pl->inst;
+    const InstanceCfg *ic = instance_cfg(in);
+    int d = rand() % pl->ndirs;
+    int first = pl->dir_first[d], count = pl->dir_count[d];
+    int pick = ic->playlist_pick < count ? ic->playlist_pick : count;
+
+    int chosen[20], nframes = 0;
+    char names[512] = "";
+    for (int k = 0; k < pick; k++) {
+        int f, dup;
+        do {                                    /* distinct files within the dir */
+            f = first + rand() % count;
+            dup = 0;
+            for (int j = 0; j < k; j++) if (chosen[j] == f) dup = 1;
+        } while (dup);
+        chosen[k] = f;
+        if (k > 0) {                            /* the gap between files */
+            for (int g = 0; g < ic->playlist_gap_frames && nframes < pl->max_frames; g++)
+                memcpy(pl->frames[nframes++], pl->silence49, 7);
+        }
+        int n = append_file(pl, pl->files[f], nframes);
+        if (n < 0) {
+            LOGW(LOGN, "[%s] %s: unreadable or too long for max_capture_secs — transmission skipped",
+                 ic->name, pl->files[f]);
+            return;
+        }
+        nframes = n;
+        const char *base = strrchr(pl->files[f], '/');
+        base = base ? base + 1 : pl->files[f];
+        size_t used = strlen(names);
+        snprintf(names + used, sizeof names - used, "%s%s", k ? ", " : "", base);
+    }
+
+    for (int slot = 1; slot <= 2; slot++) {
+        tb_lane *ln = instance_lane(in, slot);
+        if (!ln || !ln->tgid) continue;
+        if (lane_replay_active(ln)) {
+            LOGW(LOGN, "[%s] TS%d still playing — group skipped on this slot", ic->name, slot);
+            continue;
+        }
+        int n = tb_build_call((const uint8_t (*)[7])pl->frames, nframes, slot, ln->cap.pkts, ln->cap.cap);
+        if (n < 0) {
+            LOGW(LOGN, "[%s] %.1f s group is longer than max_capture_secs — skipped",
+                 ic->name, nframes * 0.02);
+            continue;
+        }
+        ln->cap.n = n;
+        LOGI(LOGN, "[%s] TS%d playing %s (%.1f s) on TG %u", ic->name, slot, names,
+             nframes * 0.02, ln->tgid);
+        lane_replay_start(ln);
+    }
+}
+
 static void play_next(playlist *pl) {
     tb_instance *in = pl->inst;
     const InstanceCfg *ic = instance_cfg(in);
@@ -192,6 +287,7 @@ static void play_next(playlist *pl) {
         LOGD(LOGN, "[%s] not connected — skipping this interval", ic->name);
         return;
     }
+    if (ic->playlist_pick > 1) { play_group(pl); return; }
 
     if (pl->next >= pl->nfiles) {               /* end of a cycle */
         pl->next = 0;
@@ -249,10 +345,23 @@ int instance_playlist_start(tb_instance *in)
     if (!pl->order || !pl->frames) return -1;
     for (int i = 0; i < pl->nfiles; i++) pl->order[i] = i;
     if (ic->playlist_shuffle) shuffle(pl);
+    if (index_dirs(pl) != 0) return -1;
+    {   dmr_bit s72[72], s49[56];
+        dmr_bytes_to_bits(AMBE_SILENCE_72, 9, s72);
+        memset(s49, 0, sizeof s49);
+        dmr_ambe_72_to_49(s72, s49);
+        dmr_bits_to_bytes(s49, 56, pl->silence49);
+    }
 
-    LOGI(LOGN, "[%s] playlist: %d files from %s, %s, one every %.0f s",
-         ic->name, pl->nfiles, ic->playlist_dir,
-         ic->playlist_shuffle ? "shuffled" : "in order", ic->playlist_interval);
+    if (ic->playlist_pick > 1)
+        LOGI(LOGN, "[%s] playlist: %d files in %d directories from %s; every %.0f s, %d random "
+                   "files from one random directory, %d ms apart",
+             ic->name, pl->nfiles, pl->ndirs, ic->playlist_dir, ic->playlist_interval,
+             ic->playlist_pick, ic->playlist_gap_frames * 20);
+    else
+        LOGI(LOGN, "[%s] playlist: %d files from %s, %s, one every %.0f s",
+             ic->name, pl->nfiles, ic->playlist_dir,
+             ic->playlist_shuffle ? "shuffled" : "in order", ic->playlist_interval);
     ev_timer_after(instance_loop(in), ic->playlist_interval, tick_cb, pl);
     return 0;
 }
